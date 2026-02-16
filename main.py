@@ -1,44 +1,79 @@
-import os
-import time
 import telebot
-from dotenv import load_dotenv
-from commands import register_commands
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Load environment variables
-load_dotenv()
+TOKEN = "8580138615:AAFBl6xtLtnhEvCExhE3cB7ubOboTXy4euw"
+CHANNEL = "@ChannelKamu"   # contoh: @ChannelFuruta
 
-# Replace 'TELEGRAM_BOT_TOKEN' with the token you received from BotFather
-TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-try:
-    bot = telebot.TeleBot(TOKEN)
-    register_commands(bot)
+bot = telebot.TeleBot(TOKEN)
 
-    @bot.message_handler(commands=['start', 'hello'])
-    def send_welcome(message):
-        """
-        Handle '/start' and '/hello' commands.
+# cek apakah user join channel
+def is_joined(user_id):
+    try:
+        member = bot.get_chat_member(CHANNEL, user_id)
+        return member.status in ["member", "creator", "administrator"]
+    except:
+        return False
 
-        Args:
-            message (telebot.types.Message): The message object.
-        """
-        bot.reply_to(message, "Hello! I'm a simple Telegram bot.")
 
-    @bot.message_handler(func=lambda msg: True)
-    def echo_all(message):
-        """
-        Echo all incoming text messages back to the user.
+# tombol join
+def join_markup():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton("JOIN CHANNEL 1", url=f"https://t.me/{CHANNEL.replace('@','')}"),
+        InlineKeyboardButton("JOIN CHANNEL 2", url=f"https://t.me/{CHANNEL.replace('@','')}"),
+        InlineKeyboardButton("JOIN CHANNEL 3", url=f"https://t.me/{CHANNEL.replace('@','')}")
+    )
+    markup.add(
+        InlineKeyboardButton("COBA LAGI", callback_data="retry")
+    )
+    return markup
 
-        Args:
-            message (telebot.types.Message): The message object.
-        """
-        bot.reply_to(message, message.text)
 
-    # Remove webhook to avoid conflicts with polling
-    bot.delete_webhook(drop_pending_updates=True)
-    bot.polling()
+@bot.message_handler(commands=['start'])
+def start(message):
+    if not is_joined(message.from_user.id):
+        bot.send_message(
+            message.chat.id,
+            f"Hello {message.from_user.first_name}\n\n"
+            "Anda harus bergabung di Channel atau Group terlebih dahulu "
+            "untuk melihat file yang saya bagikan.\n\n"
+            "Silakan join terlebih dahulu.",
+            reply_markup=join_markup()
+        )
+    else:
+        bot.send_message(message.chat.id, "Silakan upload foto atau video.")
 
-except Exception as e:
-    print(f"CRITICAL ERROR: Failed to initialize bot with provided token. Error: {e}")
-    print("The application will hang to prevent a restart loop. Please fix the TELEGRAM_BOT_TOKEN environment variable.")
-    while True:
-        time.sleep(3600)
+
+@bot.callback_query_handler(func=lambda call: call.data == "retry")
+def retry(call):
+    if not is_joined(call.from_user.id):
+        bot.answer_callback_query(call.id, "Masih belum join.")
+    else:
+        bot.send_message(call.message.chat.id, "Silakan upload file sekarang.")
+
+
+# upload foto
+@bot.message_handler(content_types=['photo'])
+def photo(message):
+    if not is_joined(message.from_user.id):
+        bot.send_message(message.chat.id, "Join channel dulu.", reply_markup=join_markup())
+        return
+
+    file_id = message.photo[-1].file_id
+    link = f"https://api.telegram.org/file/bot{TOKEN}/{file_id}"
+    bot.send_message(message.chat.id, f"Link file:\n{link}")
+
+
+# upload video
+@bot.message_handler(content_types=['video'])
+def video(message):
+    if not is_joined(message.from_user.id):
+        bot.send_message(message.chat.id, "Join channel dulu.", reply_markup=join_markup())
+        return
+
+    file_id = message.video.file_id
+    link = f"https://api.telegram.org/file/bot{TOKEN}/{file_id}"
+    bot.send_message(message.chat.id, f"Link file:\n{link}")
+
+
+bot.infinity_polling()
